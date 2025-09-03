@@ -1,2 +1,0 @@
-title,timestamp,system,processor,cpu_logical_cores,cpu_physical_cores,l1d_cache,l1i_cache,l2_cache,l3_cache,total_memory_gb,gpu_name,gpu_count,cpu_benchmark_seconds,cpu_matrix_mult_seconds,gpu_matrix_mult_seconds,memory_bandwidth_gb_s,disk_write_speed_mb_s,disk_read_speed_mb_s,network_speed_mbps
-github,2025-09-03 19:38:57,Linux 6.8.0-1030-azure,x86_64,2,1,(1 instance),(1 instance),(1 instance),(1 instance),7.758457183837891,N/A,0,0.6105246543884277,0.13902974128723145,N/A,19.051904093019626,169.74494100893526,10275.508446556183,195.903626978701

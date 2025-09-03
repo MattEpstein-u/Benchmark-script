@@ -7,7 +7,6 @@ import requests
 import numpy as np
 import argparse
 import subprocess
-import csv
 
 # --- Helper Functions ---
 
@@ -19,13 +18,13 @@ def get_cpu_cache_sizes():
             caches = {}
             for line in lscpu_output.split('\n'):
                 if "L1d cache" in line:
-                    caches['l1d_cache'] = line.split()[-2] + " " + line.split()[-1]
+                    caches['L1d'] = line.split()[-2] + " " + line.split()[-1]
                 elif "L1i cache" in line:
-                    caches['l1i_cache'] = line.split()[-2] + " " + line.split()[-1]
+                    caches['L1i'] = line.split()[-2] + " " + line.split()[-1]
                 elif "L2 cache" in line:
-                    caches['l2_cache'] = line.split()[-2] + " " + line.split()[-1]
+                    caches['L2'] = line.split()[-2] + " " + line.split()[-1]
                 elif "L3 cache" in line:
-                    caches['l3_cache'] = line.split()[-2] + " " + line.split()[-1]
+                    caches['L3'] = line.split()[-2] + " " + line.split()[-1]
             return caches
         except (FileNotFoundError, subprocess.CalledProcessError):
             return None
@@ -42,58 +41,43 @@ def print_result(metric, value, unit=""):
 # --- Benchmark Functions ---
 
 def get_system_info():
-    """Gathers, prints, and returns key system information."""
+    """Gathers and returns key system information."""
     print_section_header("System Information")
-    info = {}
+    print_result("System", f"{platform.system()} {platform.release()}")
+    print_result("Processor", platform.processor())
     
-    info['system'] = f"{platform.system()} {platform.release()}"
-    print_result("System", info['system'])
-    
-    info['processor'] = platform.processor()
-    print_result("Processor", info['processor'])
-    
-    info['cpu_physical_cores'] = psutil.cpu_count(logical=False)
-    info['cpu_logical_cores'] = psutil.cpu_count(logical=True)
-    print_result("CPU Cores", f"{info['cpu_logical_cores']} (Physical: {info['cpu_physical_cores']})")
+    physical_cores = psutil.cpu_count(logical=False)
+    logical_cores = psutil.cpu_count(logical=True)
+    print_result("CPU Cores", f"{logical_cores} (Physical: {physical_cores})")
 
     cache_sizes = get_cpu_cache_sizes()
     if cache_sizes:
-        info.update(cache_sizes)
         for cache, size in cache_sizes.items():
-            print_result(f"{cache.replace('_', ' ').upper()}", size)
+            print_result(f"{cache} Cache", size)
 
-    info['total_memory_gb'] = psutil.virtual_memory().total / (1024**3)
-    print_result("Total Memory", f"{info['total_memory_gb']:.2f}", "GB")
+    total_mem = psutil.virtual_memory().total / (1024**3)
+    print_result("Total Memory", f"{total_mem:.2f}", "GB")
     
     disk = psutil.disk_usage('/')
-    info['total_disk_space_gb'] = disk.total / (1024**3)
-    info['free_disk_space_gb'] = disk.free / (1024**3)
-    print_result("Total Disk Space", f"{info['total_disk_space_gb']:.2f}", "GB")
-    print_result("Free Disk Space", f"{info['free_disk_space_gb']:.2f}", "GB")
-    
-    return info
+    print_result("Total Disk Space", f"{disk.total / (1024**3):.2f}", "GB")
+    print_result("Free Disk Space", f"{disk.free / (1024**3):.2f}", "GB")
 
 def check_gpu():
-    """Checks for GPU availability, prints details, and returns info."""
+    """Checks for GPU availability and details."""
     print_section_header("GPU Information")
-    info = {'gpu_name': 'N/A', 'gpu_count': 0}
-    gpu_available = False
     try:
         import torch
         if torch.cuda.is_available():
-            info['gpu_count'] = torch.cuda.device_count()
-            print_result("CUDA GPUs Found", info['gpu_count'])
-            gpu_names = [torch.cuda.get_device_name(i) for i in range(info['gpu_count'])]
-            info['gpu_name'] = ", ".join(gpu_names)
-            for i, name in enumerate(gpu_names):
-                print_result(f"  GPU {i}", name)
-            gpu_available = True
+            print_result("CUDA GPUs Found", torch.cuda.device_count())
+            for i in range(torch.cuda.device_count()):
+                print_result(f"  GPU {i}", torch.cuda.get_device_name(i))
+            return True
         else:
             print("No CUDA-enabled GPUs detected by PyTorch.")
+            return False
     except ImportError:
         print("PyTorch not installed. GPU check skipped.")
-        
-    return info, gpu_available
+        return False
 
 def cpu_benchmark(n=10000000):
     """Performs a CPU-intensive calculation simulating ML preprocessing."""
@@ -106,7 +90,7 @@ def cpu_benchmark(n=10000000):
     
     tasks = [(i * chunk_size, (i + 1) * chunk_size) for i in range(num_processes)]
     
-    pool.starmap(worker_calc, tasks)
+    results = pool.starmap(worker_calc, tasks)
     
     pool.close()
     pool.join()
@@ -224,6 +208,7 @@ def network_benchmark(url="http://speedtest.tele2.net/100MB.zip"):
         response = requests.get(url, timeout=30, stream=True)
         total_size_bytes = int(response.headers.get('content-length', 0))
         
+        # Read the content in chunks
         for _ in response.iter_content(chunk_size=1024*1024):
             pass
             
@@ -244,72 +229,26 @@ def worker_calc(start, end):
         result += i * i
     return result
 
-def write_results_to_csv(results_dict, file_name):
-    """Appends benchmark results to a CSV file."""
-    file_exists = os.path.isfile(file_name)
-    
-    fieldnames = [
-        'title', 'timestamp', 'system', 'processor', 'cpu_logical_cores', 'cpu_physical_cores',
-        'l1d_cache', 'l1i_cache', 'l2_cache', 'l3_cache', 'total_memory_gb',
-        'gpu_name', 'gpu_count', 'cpu_benchmark_seconds', 'cpu_matrix_mult_seconds',
-        'gpu_matrix_mult_seconds', 'memory_bandwidth_gb_s', 'disk_write_speed_mb_s',
-        'disk_read_speed_mb_s', 'network_speed_mbps'
-    ]
-    
-    # Ensure all values are serializable and handle missing keys
-    csv_row = {key: results_dict.get(key, 'N/A') for key in fieldnames}
-    for key, value in csv_row.items():
-        if value is None:
-            csv_row[key] = 'N/A'
-
-    with open(file_name, 'a', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(csv_row)
-
 def main(args):
     """Main function to run all benchmarks."""
     print("=== ML Training Environment Benchmark ===")
+    get_system_info()
+    gpu_available = check_gpu()
     
-    if args.title:
-        csv_filename = f"benchmark_results_{args.title}.csv"
-    else:
-        csv_filename = "benchmark_results.csv"
-        
-    results = {
-        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'title': args.title if args.title else 'default'
-    }
-    
-    results.update(get_system_info())
-    
-    gpu_info, gpu_available = check_gpu()
-    results.update(gpu_info)
-    
-    results['cpu_benchmark_seconds'] = cpu_benchmark()
-    results['cpu_matrix_mult_seconds'] = matrix_multiplication_benchmark(size=args.matrix_size)
-    
+    cpu_benchmark()
+    matrix_multiplication_benchmark(size=args.matrix_size)
     if gpu_available:
-        results['gpu_matrix_mult_seconds'] = gpu_benchmark(size=args.matrix_size)
+        gpu_benchmark(size=args.matrix_size)
         
-    results['memory_bandwidth_gb_s'] = memory_benchmark(size_gb=args.mem_size)
-    
-    write_speed, read_speed = disk_io_benchmark(file_size_gb=args.disk_size)
-    results['disk_write_speed_mb_s'] = write_speed
-    results['disk_read_speed_mb_s'] = read_speed
-    
-    results['network_speed_mbps'] = network_benchmark()
-    
-    write_results_to_csv(results, csv_filename)
+    memory_benchmark(size_gb=args.mem_size)
+    disk_io_benchmark(file_size_gb=args.disk_size)
+    network_benchmark()
     
     print("\n=== Benchmark Complete ===")
     print("Use these results to compare environments for ML training.")
-    print(f"Results also saved to {csv_filename}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark an environment for ML tasks.")
-    parser.add_argument("--title", type=str, default="", help="A title for the benchmark run, used in the CSV filename and as a column.")
     parser.add_argument("--matrix-size", type=int, default=1000, help="Size of matrices for multiplication benchmarks (NxN).")
     parser.add_argument("--mem-size", type=int, default=1, help="Size of data for memory benchmark in GB.")
     parser.add_argument("--disk-size", type=int, default=1, help="Size of file for disk I/O benchmark in GB.")
