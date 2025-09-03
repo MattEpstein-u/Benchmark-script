@@ -1,3 +1,5 @@
 Title,GPU_Matrix_Ops_per_Sec,CPU_Matrix_Ops_per_Sec,Memory_Bandwidth_GBs,CPU_Multi_Core_Ops_per_Sec,Disk_Write_MBs,Disk_Read_MBs,Network_Download_Mbps,CPU_Model,CPU_Physical_Cores,CPU_Logical_Cores,CPU_L1d_Cache,CPU_L2_Cache,CPU_L3_Cache,Memory_Total_GB,Disk_Total_GB,GPU_Count
 github,N/A,20.68,19.89,18391149.74,171.24,8035.01,78.00,AMD EPYC 7763 64-Core Processor,1,2,(1 instance),(1 instance),(1 instance),7.76,31.33,0
 github,19144826.00,20.17,N/A,,21.31,166.40,8749.85,100.98,,AMD EPYC 7763 64-Core Processor,1,2,N/A,N/A,N/A,7.76,31.33,0,No CUDA-enabled GPU found
+github,17426238.84,2.48,N/A,No CUDA-enabled GPU found,20.00,118.40,103.82,83.81,,AMD EPYC 7763 64-Core Processor,1,2,N/A,N/A,N/A,7.76,31.33,0,No CUDA-enabled GPU found
+github,17115420.12,2.54,N/A,No CUDA-enabled GPU found,19.25,83.52,347.69,101.90,,AMD EPYC 7763 64-Core Processor,1,2,N/A,N/A,N/A,7.76,31.33,0,No CUDA-enabled GPU found
