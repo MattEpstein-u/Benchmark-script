@@ -1,93 +1,51 @@
-# Benchmark Script
+# ML Environment Benchmark Script
 
-This repository contains a script to benchmark the performance of the current environment. The script tests CPU, memory, and file I/O performance using `sysbench`, allowing you to compare this environment with others, such as a local server.
+This Python script benchmarks a server's performance for common machine learning tasks. It evaluates CPU, memory, disk, and network performance to help you compare different environments.
 
 ## Prerequisites
 
-- `sysbench`: A modular, cross-platform and multi-threaded benchmark tool.
+- Python 3.x
+- `pip`
 
-### Installing sysbench
+## Installation
 
-#### On Ubuntu/Debian:
+Install the required Python libraries:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y sysbench
+pip install psutil numpy requests torch
 ```
-
-#### On other Linux distributions:
-
-- **CentOS/RHEL/Fedora**: `sudo yum install sysbench` or `sudo dnf install sysbench`
-- **macOS**: `brew install sysbench`
-- **Windows**: Download from the official sysbench website or use WSL with Ubuntu.
-
-For more installation options, visit the [sysbench GitHub repository](https://github.com/akopytov/sysbench).
+*Note: `torch` is used for GPU detection but is not required to run the basic benchmarks.*
 
 ## Usage
 
-1. Clone or download this repository.
+### Basic Benchmark
 
-2. Navigate to the repository directory:
-   ```bash
-   cd /workspaces/Benchmark-script
-   ```
+To run the script with default settings. This will save results to `benchmark_results.csv`.
 
-3. Make the script executable:
-   ```bash
-   chmod +x benchmark.sh
-   ```
-
-4. Run the benchmark script:
-   ```bash
-   ./benchmark.sh
-   ```
-
-The script will perform the following tests:
-- **CPU Performance**: Calculates prime numbers up to 20,000.
-- **Memory Performance**: Tests memory read/write operations with a total size of 10GB.
-- **File I/O Performance**: Tests random read/write operations on a 1GB file for 30 seconds.
-
-Results will be displayed in the terminal, including metrics like events per second, total time, and throughput.
-
-## Output Example
-
-```
---- Starting Benchmark ---
---- Running CPU Performance Test ---
-sysbench 1.0.20 (using bundled LuaJIT 2.1.0-beta3)
-
-Prime numbers limit: 20000
-
-Initializing worker threads...
-
-Threads started!
-
-CPU speed:
-    events per second:   123.45
-
-General statistics:
-    total time:                          10.0000s
-    total number of events:              1235
-
-Latency (ms):
-         min:                                    0.00
-         avg:                                    8.10
-         max:                                   50.00
-         95th percentile:                       15.00
-         sum:                                 10000.0
-
-Threads fairness:
-    events (avg/stddev):           1235.0000/0.00
-    execution time (avg/stddev):   10.0000/0.00
-
---- Running Memory Performance Test ---
-...
+```bash
+python benchmark.py
 ```
 
-## Contributing
+### Titled Benchmark
 
-Feel free to contribute by improving the script or adding more benchmark tests.
+You can provide a title for your benchmark run. The title will be used in the CSV filename (e.g., `benchmark_results_my_server.csv`) and as a column in the CSV file.
 
-## License
+```bash
+python benchmark.py --title my_server
+```
 
-This project is open-source. Please check the license file for details.
+### Custom Benchmark
+
+You can customize all benchmark parameters:
+
+```bash
+python benchmark.py --title my_server_custom --matrix-size 2000 --mem-size 2 --disk-size 5
+```
+
+**Arguments:**
+- `--title`: A title for the benchmark run (optional).
+- `--matrix-size`: Size of matrices for multiplication tests (default: 1000).
+- `--mem-size`: Data size for memory benchmark in GB (default: 1).
+- `--disk-size`: File size for disk I/O benchmark in GB (default: 1).
+
+The script will output the results for each test and save them to a CSV file, which you can use to compare the performance of different servers.
