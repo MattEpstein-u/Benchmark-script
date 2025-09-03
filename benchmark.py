@@ -21,14 +21,22 @@ def get_cpu_info():
             for line in lscpu_output.split('\n'):
                 if "Model name" in line:
                     info["model"] = line.split(":")[-1].strip()
-                elif "L1d cache" in line:
-                    info["L1d"] = line.split()[-2] + " " + line.split()[-1]
-                elif "L1i cache" in line:
-                    info["L1i"] = line.split()[-2] + " " + line.split()[-1]
-                elif "L2 cache" in line:
-                    info["L2"] = line.split()[-2] + " " + line.split()[-1]
-                elif "L3 cache" in line:
-                    info["L3"] = line.split()[-2] + " " + line.split()[-1]
+                elif "L1d:" in line:
+                    parts = line.split(":")[-1].strip().split()
+                    if len(parts) >= 2:
+                        info["L1d"] = parts[0] + " " + parts[1]
+                elif "L1i:" in line:
+                    parts = line.split(":")[-1].strip().split()
+                    if len(parts) >= 2:
+                        info["L1i"] = parts[0] + " " + parts[1]
+                elif "L2:" in line:
+                    parts = line.split(":")[-1].strip().split()
+                    if len(parts) >= 2:
+                        info["L2"] = parts[0] + " " + parts[1]
+                elif "L3:" in line:
+                    parts = line.split(":")[-1].strip().split()
+                    if len(parts) >= 2:
+                        info["L3"] = parts[0] + " " + parts[1]
         except (FileNotFoundError, subprocess.CalledProcessError):
             pass  # lscpu not found or failed
     return info
@@ -74,9 +82,11 @@ def check_gpu():
             return results, True
         else:
             results['GPU_Count'] = 0
+            results['GPU_Reason'] = 'No CUDA-enabled GPU found'
             return results, False
     except ImportError:
         results['GPU_Count'] = 0
+        results['GPU_Reason'] = 'PyTorch not installed'
         return results, False
 
 def cpu_benchmark(n=10000000):
@@ -113,8 +123,14 @@ def matrix_multiplication_benchmark(size=1000):
 def gpu_benchmark(size=1000):
     """Benchmarks matrix multiplication on the GPU."""
     print_section_header("GPU Matrix Multiplication")
+    results = OrderedDict()
     try:
         import torch
+        if not torch.cuda.is_available():
+            results['GPU_Matrix_Ops_per_Sec'] = 'N/A'
+            results['GPU_Benchmark_Reason'] = 'No CUDA-enabled GPU found'
+            return results
+
         device = torch.device("cuda")
         A = torch.randn(size, size, device=device)
         B = torch.randn(size, size, device=device)
@@ -130,9 +146,16 @@ def gpu_benchmark(size=1000):
         duration = time.time() - start_time
 
         ops_per_sec = 1 / duration if duration > 0 else 0
-        return {'GPU_Matrix_Ops_per_Sec': f"{ops_per_sec:.2f}"}
-    except Exception:
-        return {'GPU_Matrix_Ops_per_Sec': 'N/A'}
+        results['GPU_Matrix_Ops_per_Sec'] = f"{ops_per_sec:.2f}"
+        return results
+    except ImportError:
+        results['GPU_Matrix_Ops_per_Sec'] = 'N/A'
+        results['GPU_Benchmark_Reason'] = 'PyTorch not installed'
+        return results
+    except Exception as e:
+        results['GPU_Matrix_Ops_per_Sec'] = 'N/A'
+        results['GPU_Benchmark_Reason'] = f'Benchmark failed: {e}'
+        return results
 
 def memory_benchmark(size_gb=1):
     """Tests memory bandwidth."""
@@ -185,6 +208,7 @@ def disk_io_benchmark(file_size_gb=1):
 def network_benchmark(url="http://speedtest.tele2.net/100MB.zip"):
     """Tests network download speed."""
     print_section_header("Network Benchmark")
+    results = OrderedDict()
     try:
         start_time = time.time()
         response = requests.get(url, timeout=30, stream=True)
@@ -195,9 +219,12 @@ def network_benchmark(url="http://speedtest.tele2.net/100MB.zip"):
             
         duration = time.time() - start_time
         speed_mbps = (total_size_bytes * 8) / (duration * 1024 * 1024) if duration > 0 else 0
-        return {'Network_Download_Mbps': f"{speed_mbps:.2f}"}
-    except Exception:
-        return {'Network_Download_Mbps': 'Failed'}
+        results['Network_Download_Mbps'] = f"{speed_mbps:.2f}"
+        return results
+    except Exception as e:
+        results['Network_Download_Mbps'] = 'Failed'
+        results['Network_Benchmark_Reason'] = f'Download failed: {e}'
+        return results
 
 def worker_calc(start, end):
     """Worker function for CPU benchmark calculations."""
@@ -207,18 +234,53 @@ def worker_calc(start, end):
     return result
 
 def write_to_csv(results, filename):
-    """Writes or appends results to a CSV file."""
+    """Writes or appends results to a CSV file, ensuring all headers are included."""
+    # Define a comprehensive list of all possible headers in the desired order
+    all_headers = [
+        'Title', 'CPU_Multi_Core_Ops_per_Sec', 'CPU_Matrix_Ops_per_Sec', 
+        'GPU_Matrix_Ops_per_Sec', 'GPU_Benchmark_Reason', 'Memory_Bandwidth_GBs', 
+        'Disk_Write_MBs', 'Disk_Read_MBs', 'Network_Download_Mbps', 'Network_Benchmark_Reason',
+        'CPU_Model', 'CPU_Physical_Cores', 'CPU_Logical_Cores', 
+        'CPU_L1d_Cache', 'CPU_L2_Cache', 'CPU_L3_Cache', 
+        'Memory_Total_GB', 'Disk_Total_GB', 'GPU_Count', 'GPU_Reason'
+    ]
+    # Add GPU names dynamically
+    gpu_count = results.get('GPU_Count', 0)
+    if gpu_count > 0:
+        for i in range(gpu_count):
+            all_headers.append(f'GPU_{i}_Name')
+
     file_exists = os.path.isfile(filename)
+    
     with open(filename, 'a', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=results.keys())
+        # Use the comprehensive header list for the writer
+        writer = csv.DictWriter(csvfile, fieldnames=all_headers, extrasaction='ignore')
+        
         if not file_exists:
             writer.writeheader()
-        writer.writerow(results)
+        
+        # Create a full dictionary for the current results to ensure all columns are aligned
+        row_data = {header: results.get(header, '') for header in all_headers}
+        writer.writerow(row_data)
+        
     print(f"\nResults appended to {filename}")
 
 def main(args):
     """Main function to run all benchmarks."""
     print("=== ML Training Environment Benchmark ===")
+
+    # Set benchmark parameters based on whether --mini is used
+    if args.mini:
+        print("--- Running in MINI mode (1/10th of default parameters) ---")
+        matrix_size = args.matrix_size // 10
+        mem_size = args.mem_size / 10
+        disk_size = args.disk_size / 10
+        cpu_ops = args.cpu_ops // 10
+    else:
+        matrix_size = args.matrix_size
+        mem_size = args.mem_size
+        disk_size = args.disk_size
+        cpu_ops = args.cpu_ops
     
     # --- Run Benchmarks and Collect Results ---
     all_results = OrderedDict()
@@ -229,14 +291,19 @@ def main(args):
     # Run performance benchmarks first
     perf_results = OrderedDict()
     if gpu_available:
-        perf_results.update(gpu_benchmark(size=args.matrix_size))
+        perf_results.update(gpu_benchmark(size=matrix_size))
     else:
-        perf_results['GPU_Matrix_Ops_per_Sec'] = 'N/A'
-        
-    perf_results.update(matrix_multiplication_benchmark(size=args.matrix_size))
-    perf_results.update(memory_benchmark(size_gb=args.mem_size))
-    perf_results.update(cpu_benchmark())
-    perf_results.update(disk_io_benchmark(file_size_gb=args.disk_size))
+        # Ensure placeholder is added if GPU is not available
+        results = OrderedDict()
+        results['GPU_Matrix_Ops_per_Sec'] = 'N/A'
+        if 'GPU_Reason' in gpu_info and gpu_info['GPU_Reason']:
+             results['GPU_Benchmark_Reason'] = gpu_info['GPU_Reason']
+        perf_results.update(results)
+
+    perf_results.update(matrix_multiplication_benchmark(size=matrix_size))
+    perf_results.update(memory_benchmark(size_gb=mem_size))
+    perf_results.update(cpu_benchmark(n=cpu_ops))
+    perf_results.update(disk_io_benchmark(file_size_gb=disk_size))
     perf_results.update(network_benchmark())
 
     # Combine results with performance metrics first
@@ -258,8 +325,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark an environment for ML tasks.")
     parser.add_argument("--title", type=str, help="A title for this benchmark run (e.g., server name).")
-    parser.add_argument("--matrix-size", type=int, default=1000, help="Size of matrices for multiplication benchmarks (NxN).")
-    parser.add_argument("--mem-size", type=int, default=1, help="Size of data for memory benchmark in GB.")
-    parser.add_argument("--disk-size", type=int, default=1, help="Size of file for disk I/O benchmark in GB.")
+    parser.add_argument("--mini", action="store_true", help="Run a mini-benchmark (1/10th of default parameters).")
+    parser.add_argument("--matrix-size", type=int, default=2000, help="Size of matrices for multiplication benchmarks (NxN).")
+    parser.add_argument("--mem-size", type=float, default=2.0, help="Size of data for memory benchmark in GB.")
+    parser.add_argument("--disk-size", type=float, default=2.0, help="Size of file for disk I/O benchmark in GB.")
+    parser.add_argument("--cpu-ops", type=int, default=20000000, help="Number of operations for the CPU benchmark.")
     args = parser.parse_args()
     main(args)
